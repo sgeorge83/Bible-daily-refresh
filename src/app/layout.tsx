@@ -13,11 +13,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen bg-gradient-to-br from-sky-50 to-amber-50 text-gray-800 antialiased">
         <header className="border-b border-sky-100 bg-white/70 backdrop-blur sticky top-0 z-50">
           <nav className="max-w-2xl mx-auto flex items-center justify-between px-4 py-3">
-            <a href="/" className="font-bold text-lg text-sky-700 tracking-tight">Daily Refresh</a>
+            <a href="/Bible-daily-refresh/" className="font-bold text-lg text-sky-700 tracking-tight">Daily Refresh</a>
             <div className="flex gap-4 text-sm font-medium">
-              <a href="/" className="hover:text-sky-600">Today</a>
-              <a href="/history" className="hover:text-sky-600">History</a>
-              <a href="/settings" className="hover:text-sky-600">Settings</a>
+              <a href="/Bible-daily-refresh/" className="hover:text-sky-600">Today</a>
+              <a href="/Bible-daily-refresh/history" className="hover:text-sky-600">History</a>
+              <a href="/Bible-daily-refresh/settings" className="hover:text-sky-600">Settings</a>
             </div>
           </nav>
         </header>

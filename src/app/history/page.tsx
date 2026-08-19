@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getEvents } from "@/lib/storage";
 
 interface HistoryEvent {
   id: string;
   date: string;
   passageRef: string;
-  reflection: string | null;
+  reflection?: string;
   type: string;
 }
 
@@ -14,11 +15,10 @@ export default function HistoryPage() {
   const [events, setEvents] = useState<HistoryEvent[]>([]);
 
   useEffect(() => {
-    const userId = localStorage.getItem("dr_userId");
-    if (!userId) return;
-    fetch(`/api/history?userId=${userId}`)
-      .then((r) => r.json())
-      .then((d) => setEvents(d.events || []));
+    const all = getEvents()
+      .filter((e) => e.type === "daily_refresh_completed" || e.type === "recovery_completed")
+      .sort((a, b) => b.date.localeCompare(a.date));
+    setEvents(all);
   }, []);
 
   return (

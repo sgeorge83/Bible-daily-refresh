@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getUser, saveUser } from "@/lib/storage";
+import { requestNotificationPermission } from "@/lib/reminder";
 
 export default function SettingsPage() {
   const [timezone, setTimezone] = useState("");
@@ -9,22 +11,17 @@ export default function SettingsPage() {
   const [reminderEnabled, setReminderEnabled] = useState(false);
 
   useEffect(() => {
-    setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-    const stored = localStorage.getItem("dr_reminderTime");
-    if (stored) setReminderTime(stored);
+    const user = getUser();
+    setTimezone(user.timezone);
+    setReminderTime(user.reminderTime);
     setReminderEnabled(localStorage.getItem("dr_reminderEnabled") === "true");
   }, []);
 
-  async function handleSave() {
-    const userId = localStorage.getItem("dr_userId");
-    if (!userId) return;
-    localStorage.setItem("dr_reminderTime", reminderTime);
+  function handleSave() {
+    const user = getUser();
+    saveUser({ ...user, timezone, reminderTime });
     localStorage.setItem("dr_reminderEnabled", String(reminderEnabled));
-    await fetch("/api/user", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: userId, timezone, reminderTime }),
-    });
+    if (reminderEnabled) requestNotificationPermission();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -41,7 +38,7 @@ export default function SettingsPage() {
             onChange={(e) => setTimezone(e.target.value)}
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
           >
-            {Intl.supportedValuesOf("timeZone").map((tz) => (
+            {typeof window !== "undefined" && Intl.supportedValuesOf("timeZone").map((tz) => (
               <option key={tz} value={tz}>{tz}</option>
             ))}
           </select>
@@ -65,7 +62,7 @@ export default function SettingsPage() {
             onChange={(e) => setReminderEnabled(e.target.checked)}
             className="rounded"
           />
-          <label htmlFor="reminder-toggle" className="text-sm text-gray-700">Enable in-app reminder notification</label>
+          <label htmlFor="reminder-toggle" className="text-sm text-gray-700">Enable browser reminder notification</label>
         </div>
 
         <button

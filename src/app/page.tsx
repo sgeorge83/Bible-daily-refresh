@@ -1,97 +1,82 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-interface DailyData {
-  date: string;
-  passage: { ref: string };
-  text: { reference: string; verses: { verse: number; text: string }[]; translation_name: string } | null;
-  prompts: [string, string];
-  error?: string;
-}
+import { getTodayPassage, getTodayDateStr, dayOfYear } from "@/lib/daily-passages";
+import { getPromptsForDay } from "@/lib/reflection-prompts";
+import { fetchPassage, PassageResult } from "@/lib/text-provider";
+import { computeStreak, StreakResult } from "@/lib/streak-engine";
+import { getUser, getEvents, addEvent } from "@/lib/storage";
 
 export default function DailyPage() {
-  const [data, setData] = useState<DailyData | null>(null);
+  const [text, setText] = useState<PassageResult | null>(null);
+  const [loading, setLoading] = useState(true);
   const [reflection, setReflection] = useState("");
   const [completed, setCompleted] = useState(false);
-  const [streak, setStreak] = useState<any>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [streak, setStreak] = useState<StreakResult | null>(null);
   const [speaking, setSpeaking] = useState(false);
+  const [error, setError] = useState("");
+
+  const tz = typeof window !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
+  const dateStr = typeof window !== "undefined" ? getTodayDateStr(tz) : "";
+  const doy = dateStr ? dayOfYear(dateStr) : 0;
+  const passage = getTodayPassage(tz);
+  const prompts = getPromptsForDay(doy);
 
   useEffect(() => {
-    let uid = localStorage.getItem("dr_userId");
-    if (!uid) {
-      uid = crypto.randomUUID();
-      localStorage.setItem("dr_userId", uid);
-      fetch("/api/user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
-      }).then((r) => r.json()).then((u) => localStorage.setItem("dr_userId", u.id));
-    }
-    setUserId(uid);
+    getUser();
+    refreshStreak();
+    checkAlreadyCompleted();
+    fetchPassage(passage.ref)
+      .then(setText)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    fetch(`/api/daily?tz=${encodeURIComponent(tz)}`)
-      .then((r) => r.json())
-      .then(setData);
-  }, []);
-
-  useEffect(() => {
-    if (!userId) return;
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    fetch(`/api/streak?userId=${userId}&tz=${encodeURIComponent(tz)}`)
-      .then((r) => r.json())
-      .then(setStreak);
-  }, [userId, completed]);
-
-  async function handleComplete() {
-    if (!userId || !data) return;
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    await fetch("/api/complete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, passageRef: data.passage.ref, reflection, tz }),
-    });
-    setCompleted(true);
+  function refreshStreak() {
+    const events = getEvents();
+    const today = getTodayDateStr(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    setStreak(computeStreak(events, today));
   }
 
-  async function handleRecovery() {
-    if (!userId || !data) return;
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    await fetch("/api/complete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId, passageRef: data.passage.ref, reflection: "", tz, isRecovery: true }),
-    });
+  function checkAlreadyCompleted() {
+    const events = getEvents();
+    const today = getTodayDateStr(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const done = events.some((e) => e.date === today && (e.type === "daily_refresh_completed" || e.type === "recovery_completed"));
+    setCompleted(done);
+  }
+
+  function handleComplete() {
+    const today = getTodayDateStr(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    addEvent({ type: "daily_refresh_completed", date: today, passageRef: passage.ref, reflection });
     setCompleted(true);
+    refreshStreak();
+  }
+
+  function handleRecovery() {
+    const tz2 = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const yesterday = new Date(new Date().getTime() - 86400000).toLocaleDateString("en-CA", { timeZone: tz2 });
+    addEvent({ type: "recovery_completed", date: yesterday, passageRef: passage.ref });
+    refreshStreak();
   }
 
   function handleListen() {
-    if (!data?.text) return;
-    if (speaking) {
-      speechSynthesis.cancel();
-      setSpeaking(false);
-      return;
-    }
-    const utt = new SpeechSynthesisUtterance(data.text.verses.map((v) => v.text).join(" "));
+    if (!text) return;
+    if (speaking) { speechSynthesis.cancel(); setSpeaking(false); return; }
+    const utt = new SpeechSynthesisUtterance(text.verses.map((v) => v.text).join(" "));
     utt.rate = 0.9;
     utt.onend = () => setSpeaking(false);
     speechSynthesis.speak(utt);
     setSpeaking(true);
   }
 
-  if (!data) {
+  if (loading) {
     return <div className="flex items-center justify-center py-20"><div className="animate-pulse text-sky-500">Loading today&apos;s refresh...</div></div>;
   }
 
   return (
     <div className="space-y-6">
-      {/* Streak banner */}
       {streak && (
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex items-center gap-3 text-sm flex-wrap">
           <span className="bg-sky-100 text-sky-700 px-3 py-1 rounded-full font-semibold">
             🔥 {streak.currentStreak} day{streak.currentStreak !== 1 ? "s" : ""}
           </span>
@@ -104,16 +89,15 @@ export default function DailyPage() {
         </div>
       )}
 
-      {/* Daily card */}
       <div className="bg-white rounded-2xl shadow-sm border border-sky-100 p-6 space-y-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-sky-800">{data.passage.ref}</h2>
-          <span className="text-xs text-gray-400">{data.date}</span>
+          <h2 className="text-xl font-bold text-sky-800">{passage.ref}</h2>
+          <span className="text-xs text-gray-400">{dateStr}</span>
         </div>
 
-        {data.text ? (
+        {text ? (
           <div className="space-y-2">
-            {data.text.verses.map((v) => (
+            {text.verses.map((v) => (
               <p key={v.verse} className="text-gray-700 leading-7">
                 <sup className="text-xs text-sky-400 mr-1">{v.verse}</sup>
                 {v.text}
@@ -121,7 +105,7 @@ export default function DailyPage() {
             ))}
           </div>
         ) : (
-          <p className="text-red-400 text-sm">Could not load passage. {data.error}</p>
+          <p className="text-red-400 text-sm">Could not load passage. {error}</p>
         )}
 
         <button onClick={handleListen} className="text-sm text-sky-600 hover:text-sky-800 transition">
@@ -129,12 +113,11 @@ export default function DailyPage() {
         </button>
       </div>
 
-      {/* Reflection */}
       {!completed ? (
         <div className="bg-white rounded-2xl shadow-sm border border-sky-100 p-6 space-y-4">
           <h3 className="font-semibold text-sky-700">Reflect &amp; Respond</h3>
-          <p className="text-sm text-gray-600 italic">{data.prompts[0]}</p>
-          <p className="text-sm text-gray-600 italic">{data.prompts[1]}</p>
+          <p className="text-sm text-gray-600 italic">{prompts[0]}</p>
+          <p className="text-sm text-gray-600 italic">{prompts[1]}</p>
           <textarea
             value={reflection}
             onChange={(e) => setReflection(e.target.value)}
