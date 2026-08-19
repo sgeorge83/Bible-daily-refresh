@@ -15,7 +15,6 @@ A lightweight web app that helps busy professionals build a consistent Bible rea
 
 - Next.js 14 + TypeScript
 - Tailwind CSS
-- Prisma (SQLite dev / Postgres prod)
 - bible-api.com (World English Bible, public domain)
 - Vitest for tests
 
@@ -23,7 +22,6 @@ A lightweight web app that helps busy professionals build a consistent Bible rea
 
 ```bash
 npm install
-npx prisma db push
 npm run dev
 ```
 
